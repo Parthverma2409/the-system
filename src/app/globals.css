@@ -147,5 +147,43 @@ body {
 }
 .notify-in { animation: notify 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
+/* ---- Cinematic (LEVEL UP / RANK UP full-screen flash) ---- */
+.cine-overlay { animation: cineFade 0.25s ease-out both; }
+@keyframes cineFade { from { opacity: 0; } to { opacity: 1; } }
+
+.cine-flash { animation: cineFlash 0.7s ease-out both; mix-blend-mode: screen; }
+@keyframes cineFlash {
+  0% { opacity: 0.85; }
+  100% { opacity: 0; }
+}
+
+.cine-title {
+  animation: cineTitle 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes cineTitle {
+  0% { opacity: 0; transform: scale(0.5); filter: brightness(3); letter-spacing: 0.6em; }
+  60% { transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); filter: brightness(1); }
+}
+.cine-sub { animation: sysIn 0.5s ease-out both; }
+.cine-sub2 { animation: sysIn 0.6s 0.15s ease-out both; }
+
+/* radial light rays for the RANK UP promotion */
+.cine-rays {
+  background: repeating-conic-gradient(
+    from 0deg at 50% 50%,
+    rgba(255, 214, 107, 0.12) 0deg 6deg,
+    transparent 6deg 12deg
+  );
+  animation: cineSpin 9s linear infinite, cineFade 0.6s ease-out both;
+  mix-blend-mode: screen;
+}
+@keyframes cineSpin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .cine-flash, .cine-rays { animation: none; opacity: 0; }
+  .cine-title, .cine-sub, .cine-sub2 { animation: none; }
+}
+
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--system-dim); border-radius: 4px; }

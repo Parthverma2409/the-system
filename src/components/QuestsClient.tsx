@@ -11,6 +11,9 @@ import {
 import { completeQuest } from "@/lib/rpg/award";
 import { generateSystemQuests } from "@/lib/rpg/questgen";
 import { SysWindow, RewardsModal, type RewardItem } from "@/components/SystemUI";
+import Cinematic, { type CinematicData } from "@/components/Cinematic";
+import { playClear, playLevelUp, playPing, vibrate } from "@/lib/sound";
+import MuteToggle from "@/components/MuteToggle";
 
 export type Cadence = "daily" | "weekly" | "monthly" | "dungeon";
 export type QuestStatus = "todo" | "done" | "failed";
@@ -77,6 +80,8 @@ export default function QuestsClient({ initial }: { initial: QuestsInitial }) {
 
   const [tab, setTab] = useState<Cadence>("daily");
   const [rewards, setRewards] = useState<{ title: string; items: RewardItem[]; big: boolean } | null>(null);
+  const [pendingRewards, setPendingRewards] = useState<{ title: string; items: RewardItem[]; big: boolean } | null>(null);
+  const [cinematic, setCinematic] = useState<CinematicData | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const prog = useMemo(() => progression(totalExp), [totalExp]);
@@ -148,7 +153,19 @@ export default function QuestsClient({ initial }: { initial: QuestsInitial }) {
       setEarnedToday((e) => e + res.gained);
       setStats((s) => ({ ...s, [res.stat]: res.newStatVal }));
       setDungeonsCleared(res.newDungeons);
-      setRewards({ title: res.title, items: res.items, big: res.leveled || q.cadence === "dungeon" });
+
+      const payload = { title: res.title, items: res.items, big: res.leveled || q.cadence === "dungeon" };
+      if (res.leveled) {
+        // Level-up: cinematic flash first, then the rewards modal.
+        playLevelUp();
+        vibrate([0, 40, 50, 90]);
+        setPendingRewards(payload);
+        setCinematic({ type: "level", title: "LEVEL UP", sub: `${res.before} → ${res.after}` });
+      } else {
+        playClear();
+        vibrate(20);
+        setRewards(payload);
+      }
     } catch {
       patchQuest(q.id, { status: "todo" }); // roll back optimistic flip
     } finally {
@@ -235,6 +252,19 @@ export default function QuestsClient({ initial }: { initial: QuestsInitial }) {
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-8">
+      {cinematic && (
+        <Cinematic
+          data={cinematic}
+          onDone={() => {
+            setCinematic(null);
+            if (pendingRewards) {
+              setRewards(pendingRewards);
+              setPendingRewards(null);
+            }
+          }}
+        />
+      )}
+
       {rewards && (
         <RewardsModal title={rewards.title} items={rewards.items} big={rewards.big} onClose={() => setRewards(null)} />
       )}
@@ -248,7 +278,8 @@ export default function QuestsClient({ initial }: { initial: QuestsInitial }) {
         />
       )}
 
-      <header className="mb-5 text-center sys-in">
+      <header className="relative mb-5 text-center sys-in">
+        <div className="absolute right-0 top-0"><MuteToggle /></div>
         <p className="text-[10px] tracking-[0.5em] text-system/55">⟢ THE SYSTEM ⟣</p>
         <h1 className="glow mt-1 text-2xl font-black tracking-wide text-system">QUEST BOARD</h1>
         <p className="mt-1 text-[10px] tracking-[0.3em] text-system/40">
@@ -258,7 +289,7 @@ export default function QuestsClient({ initial }: { initial: QuestsInitial }) {
 
       {!systemIssued && (
         <button
-          onClick={() => setArrival(true)}
+          onClick={() => { playPing(); vibrate(30); setArrival(true); }}
           className="notify-in mb-4 flex w-full items-center justify-between border px-4 py-3 text-left"
           style={{ borderColor: "var(--gold)", background: "rgba(255,214,107,.08)", boxShadow: "0 0 18px rgba(255,214,107,.25)" }}
         >

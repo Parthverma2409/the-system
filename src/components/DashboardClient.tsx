@@ -21,6 +21,9 @@ import {
   HunterState,
 } from "@/lib/rpg/engine";
 import { ExpBar, RankBadge, StatRadar, SysWindow, VitalBars, RewardsModal, type RewardItem } from "@/components/SystemUI";
+import Cinematic, { type CinematicData } from "@/components/Cinematic";
+import MuteToggle from "@/components/MuteToggle";
+import { playClear, playLevelUp, vibrate } from "@/lib/sound";
 
 type Category = keyof typeof CATEGORY_STAT;
 
@@ -62,6 +65,8 @@ export default function DashboardClient({ initial }: { initial: InitialData }) {
   const [stats, setStats] = useState(initial.stats);
   const [earnedToday, setEarnedToday] = useState(0);
   const [rewards, setRewards] = useState<{ title: string; items: RewardItem[]; big: boolean } | null>(null);
+  const [pendingRewards, setPendingRewards] = useState<{ title: string; items: RewardItem[]; big: boolean } | null>(null);
+  const [cinematic, setCinematic] = useState<CinematicData | null>(null);
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newCat, setNewCat] = useState<Category>("routine");
@@ -121,7 +126,17 @@ export default function DashboardClient({ initial }: { initial: InitialData }) {
       items.push({ label: "LEVEL", value: `${before} → ${after}`, color: "var(--gold)" });
       items.push({ label: "ABILITY POINTS", value: `+${AP_PER_LEVEL * (after - before)}`, color: "var(--gold)" });
     }
-    setRewards({ title: leveled ? "LEVEL UP" : "QUEST REWARDS", items, big: leveled });
+    const payload = { title: leveled ? "LEVEL UP" : "QUEST REWARDS", items, big: leveled };
+    if (leveled) {
+      playLevelUp();
+      vibrate([0, 40, 50, 90]);
+      setPendingRewards(payload);
+      setCinematic({ type: "level", title: "LEVEL UP", sub: `${before} → ${after}` });
+    } else {
+      playClear();
+      vibrate(20);
+      setRewards(payload);
+    }
 
     // persist
     await Promise.all([
@@ -170,6 +185,19 @@ export default function DashboardClient({ initial }: { initial: InitialData }) {
 
   return (
     <main className={`mx-auto w-full max-w-3xl px-4 py-8 ${hunter.rank === "S" ? "monarch" : ""}`}>
+      {cinematic && (
+        <Cinematic
+          data={cinematic}
+          onDone={() => {
+            setCinematic(null);
+            if (pendingRewards) {
+              setRewards(pendingRewards);
+              setPendingRewards(null);
+            }
+          }}
+        />
+      )}
+
       {rewards && (
         <RewardsModal
           title={rewards.title}
@@ -307,9 +335,12 @@ export default function DashboardClient({ initial }: { initial: InitialData }) {
 
       <div className="mt-8 flex items-center justify-between text-[10px] tracking-wider text-system/35">
         <span>SYNCED TO CLOUD · {initial.hunterName.toUpperCase()}</span>
-        <button onClick={signOut} className="border border-system/20 px-3 py-1 text-system/55 hover:border-danger/50 hover:text-danger">
-          SIGN OUT
-        </button>
+        <div className="flex items-center gap-2">
+          <MuteToggle />
+          <button onClick={signOut} className="border border-system/20 px-3 py-1 text-system/55 hover:border-danger/50 hover:text-danger">
+            SIGN OUT
+          </button>
+        </div>
       </div>
     </main>
   );
