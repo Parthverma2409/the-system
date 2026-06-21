@@ -25,6 +25,7 @@ import Cinematic, { type CinematicData } from "@/components/Cinematic";
 import MuteToggle from "@/components/MuteToggle";
 import { playClear, playLevelUp, playRankUp, playPing, vibrate } from "@/lib/sound";
 import { ABILITIES, type Ability } from "@/lib/rpg/abilities";
+import ShareCard from "@/components/ShareCard";
 
 type Category = keyof typeof CATEGORY_STAT;
 
@@ -333,6 +334,19 @@ export default function DashboardClient({ initial }: { initial: InitialData }) {
           <Stat label="STREAK" value={`🔥 ${streak}d`} color="var(--gold)" />
           <Stat label="CLEARED" value={`${clearedCount}/${quests.length}`} color="var(--system)" />
           <Stat label="EXP TODAY" value={`${earnedToday}`} color="var(--system)" />
+        </div>
+
+        <div className="mt-4 border-t border-system/15 pt-3">
+          <ShareCard
+            data={{
+              hunterName: initial.hunterName,
+              level: prog.level,
+              rank,
+              title: RANK_TITLE[rank],
+              stats,
+              streak,
+            }}
+          />
         </div>
       </SysWindow>
 
