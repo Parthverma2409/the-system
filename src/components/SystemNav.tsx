@@ -16,7 +16,8 @@ const TABS = [
 
 export default function SystemNav() {
   const pathname = usePathname();
-  if (pathname === "/login") return null;
+  // Hidden on the auth screen and on public, logged-out profile pages.
+  if (pathname === "/login" || pathname.startsWith("/h/")) return null;
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-system/25 bg-bg/85 backdrop-blur-md">

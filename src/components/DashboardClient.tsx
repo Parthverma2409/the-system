@@ -26,6 +26,7 @@ import MuteToggle from "@/components/MuteToggle";
 import { playClear, playLevelUp, playRankUp, playPing, vibrate } from "@/lib/sound";
 import { ABILITIES, type Ability } from "@/lib/rpg/abilities";
 import ShareCard from "@/components/ShareCard";
+import PublicProfileControl from "@/components/PublicProfileControl";
 
 type Category = keyof typeof CATEGORY_STAT;
 
@@ -46,6 +47,8 @@ export interface InitialData {
   stats: Record<StatKey, number>;
   streak: number;
   apSpent: number;
+  handle: string | null;
+  publicProfile: boolean;
   abilities: Record<string, number>; // ability_key → owned charges
   doubleNext: boolean; // a Focus Surge is armed
   quests: QuestRow[];
@@ -336,7 +339,7 @@ export default function DashboardClient({ initial }: { initial: InitialData }) {
           <Stat label="EXP TODAY" value={`${earnedToday}`} color="var(--system)" />
         </div>
 
-        <div className="mt-4 border-t border-system/15 pt-3">
+        <div className="mt-4 space-y-3 border-t border-system/15 pt-3">
           <ShareCard
             data={{
               hunterName: initial.hunterName,
@@ -346,6 +349,11 @@ export default function DashboardClient({ initial }: { initial: InitialData }) {
               stats,
               streak,
             }}
+          />
+          <PublicProfileControl
+            userId={initial.userId}
+            initialHandle={initial.handle}
+            initialPublic={initial.publicProfile}
           />
         </div>
       </SysWindow>

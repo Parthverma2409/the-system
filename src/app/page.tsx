@@ -42,6 +42,8 @@ export default async function Page() {
     stats,
     streak: streak?.current ?? 0,
     apSpent: apRow?.spent ?? 0,
+    handle: profile?.handle ?? null,
+    publicProfile: profile?.public_profile ?? false,
     abilities: Object.fromEntries((abilityRows ?? []).map((a) => [a.ability_key, a.charges])),
     doubleNext: (effectRows ?? []).some((e) => e.effect_key === "double_next"),
     quests: (quests ?? []).map((q) => ({
