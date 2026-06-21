@@ -277,6 +277,13 @@ outfits        (id, user_id, date, item_ids uuid[], note)     -- today's attire 
 - ✅ **P8 — Journal** (Hunter's Log): date-based entries with a 6-mood state-of-mind picker, one-per-day upsert, a "cleared today" quest read-out, and a timeline of past records (each showing the quests conquered that day). `journal` table RLS clean.
 - 🔧 **P9 — Notifications** (code+DB done, needs secret/cron): `push_subscriptions` table (+RLS), service worker (Web Push + offline app-shell cache), registered on load; LOG → REMINDERS opt-in (subscribe/unsubscribe, iOS-install nudge); deployed edge functions `send-push` (generic sender) + `daily-rollover` (D2 penalty job — fails todo dailies, floors EXP, resets streak, pushes warning). **Remaining manual steps in `supabase/SETUP-NOTIFICATIONS.md`:** set VAPID secret, schedule pg_cron, add app icons.
 - ✅ **Quest Board** (`/quests`): full screen-3 build — Daily/Weekly/Monthly/Dungeons tabs, create/edit/delete, todo→done/failed states with reset, due dates + notes. Completion runs the shared engine award path (`lib/rpg/award.ts`, reused with the dashboard): EXP + stat + level-up/AP, and dungeon clears increment `dungeons_cleared` toward Rank-Up Trials. Open-count badges per tab.
+- ✅ **"Cooler" feature pack** (post-P9, pre-deploy):
+  - **System Quest-Giver** — `lib/rpg/questgen.ts` deterministic, level-scaled, weakest-stat-aware daily quest set; gold arrival NOTIFICATION modal; `quests.source`/`system_date`.
+  - **AI Quest-Master** — optional Groq edge function `quest-flavor` gives the System an in-character voice on the arrival screen; degrades to rule-engine text with no key (`supabase/SETUP-AI-QUESTMASTER.md`).
+  - **Cinematics + sound** — Web Audio SFX (no assets), LEVEL UP / RANK UP full-screen flash, haptics, mute toggle.
+  - **Rank-Up Trial flow** — Attempt-Trial → gold RANK UP cinematic → promote rank + unlock title (S = Shadow Monarch).
+  - **Skills** — `user_abilities`/`active_effects`; spend AP on Focus Surge (2× next EXP) and Iron Will (negates next penalty, honoured by daily-rollover v2).
+  - **Shadow Army** — `shadows` table; Dungeon clears ARISE tiered shadow soldiers with Army Power; roster on the Dungeons tab.
 - **P10 — Deploy to Vercel** → install on phone + laptop.
 
 ## V2.8 Privacy & safety note (because this now holds real documents)

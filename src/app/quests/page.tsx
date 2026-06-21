@@ -13,7 +13,7 @@ export default async function QuestsPage() {
   const today = new Date().toISOString().slice(0, 10);
   const [{ data: profile }, { data: statRows }, { data: streak }, { data: quests }, { data: todayLogs }, { data: shadows }] =
     await Promise.all([
-      supabase.from("profiles").select("total_exp,dungeons_cleared").eq("id", user.id).single(),
+      supabase.from("profiles").select("total_exp,dungeons_cleared,rank").eq("id", user.id).single(),
       supabase.from("stats").select("stat_key,value").eq("user_id", user.id),
       supabase.from("streaks").select("current").eq("user_id", user.id).single(),
       supabase
@@ -36,6 +36,7 @@ export default async function QuestsPage() {
     userId: user.id,
     totalExp: profile?.total_exp ?? 0,
     dungeonsCleared: profile?.dungeons_cleared ?? 0,
+    rank: profile?.rank ?? "E",
     streak: streak?.current ?? 0,
     stats,
     earnedToday,

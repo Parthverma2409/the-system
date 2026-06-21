@@ -38,6 +38,7 @@ export interface QuestsInitial {
   userId: string;
   totalExp: number;
   dungeonsCleared: number;
+  rank: string;
   streak: number;
   stats: Record<StatKey, number>;
   earnedToday: number;
@@ -99,6 +100,10 @@ export default function QuestsClient({ initial }: { initial: QuestsInitial }) {
   const [systemIssued, setSystemIssued] = useState(initial.systemIssuedToday);
   const [arrival, setArrival] = useState(false); // System quest arrival modal open
   const [issuing, setIssuing] = useState(false);
+  const [aiMessage, setAiMessage] = useState<string | null>(null);
+  const [aiLines, setAiLines] = useState<string[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiTried, setAiTried] = useState(false);
 
   // Preview the set the System WOULD issue today (deterministic — same as accept).
   const systemPreview = useMemo(
@@ -112,6 +117,30 @@ export default function QuestsClient({ initial }: { initial: QuestsInitial }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [initial.userId, initial.today, prog.level]
   );
+
+  async function openArrival() {
+    playPing();
+    vibrate(30);
+    setArrival(true);
+    if (aiTried) return; // fetch the AI Quest-Master flavour once
+    setAiTried(true);
+    setAiLoading(true);
+    try {
+      const { data } = await supabase.functions.invoke<{ message: string | null; lines: string[] }>("quest-flavor", {
+        body: {
+          level: prog.level,
+          rank: initial.rank,
+          quests: systemPreview.map((q) => ({ title: q.title, category: q.category, difficulty: q.difficulty })),
+        },
+      });
+      if (data?.message) setAiMessage(data.message);
+      if (Array.isArray(data?.lines)) setAiLines(data.lines);
+    } catch {
+      // graceful fallback — the rule-engine text still shows
+    } finally {
+      setAiLoading(false);
+    }
+  }
 
   async function acceptSystemQuests() {
     if (issuing) return;
@@ -301,6 +330,9 @@ export default function QuestsClient({ initial }: { initial: QuestsInitial }) {
         <SystemArrivalModal
           quests={systemPreview}
           busy={issuing}
+          aiMessage={aiMessage}
+          aiLines={aiLines}
+          aiLoading={aiLoading}
           onAccept={acceptSystemQuests}
           onClose={() => setArrival(false)}
         />
@@ -317,7 +349,7 @@ export default function QuestsClient({ initial }: { initial: QuestsInitial }) {
 
       {!systemIssued && (
         <button
-          onClick={() => { playPing(); vibrate(30); setArrival(true); }}
+          onClick={openArrival}
           className="notify-in mb-4 flex w-full items-center justify-between border px-4 py-3 text-left"
           style={{ borderColor: "var(--gold)", background: "rgba(255,214,107,.08)", boxShadow: "0 0 18px rgba(255,214,107,.25)" }}
         >
@@ -546,10 +578,13 @@ function QuestForm({
 // The System's quest-arrival window (ref image 1 — angular NOTIFICATION modal).
 // Lists today's issued Daily Quests with Accept / Decline.
 function SystemArrivalModal({
-  quests, busy, onAccept, onClose,
+  quests, busy, aiMessage, aiLines, aiLoading, onAccept, onClose,
 }: {
   quests: { key: string; title: string; category: string; difficulty: Difficulty; protocol: string }[];
   busy: boolean;
+  aiMessage: string | null;
+  aiLines: string[];
+  aiLoading: boolean;
   onAccept: () => void;
   onClose: () => void;
 }) {
@@ -562,10 +597,12 @@ function SystemArrivalModal({
             A Daily Quest has arrived.
           </p>
           <p className="mt-1 text-center text-[11px] leading-relaxed text-system/55">
-            &ldquo;Prepare to become strong, Hunter. The System has set today&apos;s training.&rdquo;
+            {aiLoading
+              ? "The System is speaking…"
+              : `“${aiMessage ?? "Prepare to become strong, Hunter. The System has set today's training."}”`}
           </p>
           <ul className="mt-4 space-y-2">
-            {quests.map((q) => (
+            {quests.map((q, i) => (
               <li key={q.key} className="border border-gold/25 bg-gold/5 px-3 py-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-bold text-foreground">{q.title}</span>
@@ -573,7 +610,7 @@ function SystemArrivalModal({
                     {CATEGORY_STAT[q.category] ?? "VIT"}·{q.difficulty.toUpperCase()}
                   </span>
                 </div>
-                <p className="mt-0.5 text-[10px] text-system/45">▸ {q.protocol}</p>
+                <p className="mt-0.5 text-[10px] text-system/45">▸ {aiLines[i] ?? q.protocol}</p>
               </li>
             ))}
           </ul>
