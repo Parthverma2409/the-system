@@ -9,7 +9,8 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/", label: "STATUS", icon: "◈" },
   { href: "/quests", label: "QUESTS", icon: "⚔" },
-  { href: "/inventory", label: "INVENTORY", icon: "▦" },
+  { href: "/leaderboard", label: "GUILD", icon: "♟" },
+  { href: "/inventory", label: "VAULT", icon: "▦" },
   { href: "/equipment", label: "EQUIP", icon: "🜍" },
   { href: "/journal", label: "LOG", icon: "✎" },
 ] as const;
