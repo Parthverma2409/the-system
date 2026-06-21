@@ -23,7 +23,7 @@ import {
 import { ExpBar, RankBadge, StatRadar, SysWindow, VitalBars, RewardsModal, type RewardItem } from "@/components/SystemUI";
 import Cinematic, { type CinematicData } from "@/components/Cinematic";
 import MuteToggle from "@/components/MuteToggle";
-import { playClear, playLevelUp, vibrate } from "@/lib/sound";
+import { playClear, playLevelUp, playRankUp, vibrate } from "@/lib/sound";
 
 type Category = keyof typeof CATEGORY_STAT;
 
@@ -56,6 +56,16 @@ const DIFF_COLOR: Record<Difficulty, string> = {
 const CATEGORIES: Category[] = ["health", "study", "routine", "focus", "social", "creative"];
 const DIFFS: Difficulty[] = ["Easy", "Normal", "Hard", "Boss"];
 
+// Title granted on reaching each rank (the S-Rank one is the Shadow Monarch payoff).
+const RANK_TITLE: Record<Rank, string> = {
+  E: "Awakened",
+  D: "Awakened Hunter",
+  C: "Elite Hunter",
+  B: "Veteran Hunter",
+  A: "National-Level Hunter",
+  S: "Shadow Monarch",
+};
+
 export default function DashboardClient({ initial }: { initial: InitialData }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -63,6 +73,8 @@ export default function DashboardClient({ initial }: { initial: InitialData }) {
   const [quests, setQuests] = useState<QuestRow[]>(initial.quests);
   const [totalExp, setTotalExp] = useState(initial.totalExp);
   const [stats, setStats] = useState(initial.stats);
+  const [rank, setRank] = useState<Rank>(initial.rank);
+  const [promoting, setPromoting] = useState(false);
   const [earnedToday, setEarnedToday] = useState(0);
   const [rewards, setRewards] = useState<{ title: string; items: RewardItem[]; big: boolean } | null>(null);
   const [pendingRewards, setPendingRewards] = useState<{ title: string; items: RewardItem[]; big: boolean } | null>(null);
@@ -93,7 +105,7 @@ export default function DashboardClient({ initial }: { initial: InitialData }) {
   const apAvailable = Math.max(0, abilityPointsEarned(prog.level) - initial.apSpent);
 
   const hunter: HunterState = {
-    rank: initial.rank,
+    rank,
     level: prog.level,
     streak,
     stats,
@@ -101,6 +113,38 @@ export default function DashboardClient({ initial }: { initial: InitialData }) {
   };
   const trial = nextTrial(hunter.rank);
   const canPromote = trialAvailable(hunter);
+
+  async function attemptTrial() {
+    if (!trial || !canPromote || promoting) return;
+    setPromoting(true);
+    const target = trial.rank;
+    const title = RANK_TITLE[target];
+
+    playRankUp();
+    vibrate([0, 60, 40, 140]);
+    setPendingRewards({
+      title: "PROMOTION",
+      items: [
+        { label: "RANK", value: `${rank} → ${target}`, color: "var(--gold)" },
+        { label: "TITLE EARNED", value: title, color: "var(--gold)" },
+      ],
+      big: true,
+    });
+    setCinematic({ type: "rank", title: "RANK UP", sub: `${target}-RANK ATTAINED` });
+    setRank(target); // optimistic — flips the badge (and Monarch skin at S)
+
+    await Promise.all([
+      supabase.from("profiles").update({ rank: target }).eq("id", initial.userId),
+      supabase.from("rank_trials").insert({
+        user_id: initial.userId,
+        target_rank: target,
+        status: "passed",
+        passed_at: new Date().toISOString(),
+      }),
+      supabase.from("titles").upsert({ user_id: initial.userId, title_key: title }, { onConflict: "user_id,title_key" }),
+    ]);
+    setPromoting(false);
+  }
 
   async function clearQuest(q: QuestRow) {
     if (q.status === "done") return;
@@ -253,9 +297,23 @@ export default function DashboardClient({ initial }: { initial: InitialData }) {
           </div>
           <div className="p-4 text-sm">
             <p className="text-system/75">▸ Requirement — {trial.describe}</p>
-            <p className="mt-2 text-xs italic text-system/45">
-              &ldquo;You are strong, but the System still ranks you {hunter.rank}. Power outpaces recognition.&rdquo;
-            </p>
+            {canPromote ? (
+              <>
+                <p className="mt-2 text-xs text-gold/80">All conditions met. The gate to {trial.rank}-Rank stands open.</p>
+                <button
+                  onClick={attemptTrial}
+                  disabled={promoting}
+                  className="mt-3 w-full border py-2.5 text-xs font-black tracking-[0.3em] transition hover:bg-gold/10 disabled:opacity-50"
+                  style={{ borderColor: "var(--gold)", color: "var(--gold)", boxShadow: "0 0 16px rgba(255,214,107,.35)" }}
+                >
+                  {promoting ? "ASCENDING…" : `⚔ ATTEMPT RANK-UP TRIAL → ${trial.rank}`}
+                </button>
+              </>
+            ) : (
+              <p className="mt-2 text-xs italic text-system/45">
+                &ldquo;You are strong, but the System still ranks you {hunter.rank}. Power outpaces recognition.&rdquo;
+              </p>
+            )}
           </div>
         </div>
       )}
