@@ -1,26 +1,151 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #03060f;
+  --system: #36c5ff; /* System cyan */
+  --system-bright: #9fe6ff;
+  --system-dim: #1b5e86;
+  --foreground: #d6efff;
+  --danger: #ff5470;
+  --gold: #ffd66b;
+  --monarch: #b07bff;
 }
 
 @theme inline {
-  --color-background: var(--background);
+  --color-bg: var(--bg);
+  --color-system: var(--system);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-danger: var(--danger);
+  --color-gold: var(--gold);
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
 }
 
 body {
-  background: var(--background);
+  background:
+    radial-gradient(1100px 540px at 50% -8%, rgba(54, 197, 255, 0.16), transparent 62%),
+    radial-gradient(800px 600px at 50% 120%, rgba(54, 197, 255, 0.06), transparent 60%),
+    var(--bg);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-mono);
+  min-height: 100vh;
+  letter-spacing: 0.02em;
 }
+
+/* ---- The System window: notched corners + double frame + inner glow ---- */
+.sys-window {
+  position: relative;
+  background: linear-gradient(165deg, rgba(13, 32, 58, 0.82), rgba(5, 12, 26, 0.88));
+  border: 1px solid rgba(54, 197, 255, 0.55);
+  box-shadow:
+    0 0 0 1px rgba(54, 197, 255, 0.12),
+    0 0 28px rgba(54, 197, 255, 0.18),
+    inset 0 0 40px rgba(54, 197, 255, 0.06),
+    inset 0 1px 0 rgba(159, 230, 255, 0.25);
+  /* notched (chamfered) corners — the signature System window shape */
+  clip-path: polygon(
+    14px 0, calc(100% - 14px) 0, 100% 14px,
+    100% calc(100% - 14px), calc(100% - 14px) 100%,
+    14px 100%, 0 calc(100% - 14px), 0 14px
+  );
+  backdrop-filter: blur(7px);
+}
+
+/* faint horizontal scanlines inside windows */
+.sys-window::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0 3px,
+    rgba(54, 197, 255, 0.035) 3px 4px
+  );
+  mix-blend-mode: screen;
+}
+
+/* small corner nodes */
+.sys-nodes::before,
+.sys-nodes::after {
+  content: "";
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  background: var(--system);
+  box-shadow: 0 0 6px var(--system);
+  z-index: 2;
+}
+.sys-nodes::before { top: 6px; left: 6px; }
+.sys-nodes::after { bottom: 6px; right: 6px; }
+
+/* window header bar: [ TITLE ] centered */
+.sys-header {
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.32em;
+  color: var(--system-bright);
+  text-shadow: 0 0 8px rgba(54, 197, 255, 0.6);
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(54, 197, 255, 0.3);
+  background: linear-gradient(180deg, rgba(54, 197, 255, 0.1), transparent);
+}
+
+.glow { text-shadow: 0 0 8px rgba(54, 197, 255, 0.7); }
+.glow-gold { text-shadow: 0 0 10px rgba(255, 214, 107, 0.7); }
+
+/* ---- Monarch skin (S-Rank unlock) — gold on black, ref image 4 ----
+   Re-maps the theme tokens, so every var(--system) / text-system descendant
+   turns gold without touching any component. The visual payoff for S-Rank. */
+.monarch {
+  --system: #ffd166;
+  --system-bright: #ffe7a3;
+  --system-dim: #7a5b18;
+  --foreground: #fff4d6;
+  position: relative;
+}
+.monarch .sys-window {
+  background: linear-gradient(165deg, rgba(40, 30, 6, 0.85), rgba(12, 9, 2, 0.9));
+  border-color: rgba(255, 209, 102, 0.55);
+  box-shadow:
+    0 0 0 1px rgba(255, 209, 102, 0.14),
+    0 0 30px rgba(255, 209, 102, 0.22),
+    inset 0 0 40px rgba(255, 209, 102, 0.07),
+    inset 0 1px 0 rgba(255, 231, 163, 0.28);
+}
+.monarch .sys-window::after {
+  background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(255, 209, 102, 0.04) 3px 4px);
+}
+.monarch .sys-header {
+  color: var(--system-bright);
+  text-shadow: 0 0 8px rgba(255, 209, 102, 0.6);
+  border-bottom-color: rgba(255, 209, 102, 0.3);
+  background: linear-gradient(180deg, rgba(255, 209, 102, 0.1), transparent);
+}
+.monarch .glow { text-shadow: 0 0 8px rgba(255, 209, 102, 0.75); }
+.monarch .exp-fill { animation: none; }
+
+/* entrance animation for windows */
+@keyframes sysIn {
+  0% { opacity: 0; transform: translateY(10px) scale(0.98); filter: brightness(2); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: brightness(1); }
+}
+.sys-in { animation: sysIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* EXP bar pulse */
+@keyframes expPulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(54, 197, 255, 0.6); }
+  50% { box-shadow: 0 0 18px rgba(54, 197, 255, 1); }
+}
+.exp-fill { animation: expPulse 2.4s ease-in-out infinite; }
+
+/* notification popup slam-in */
+@keyframes notify {
+  0% { opacity: 0; transform: scale(0.8); filter: brightness(2.5); }
+  12% { opacity: 1; transform: scale(1.04); }
+  20% { transform: scale(1); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.notify-in { animation: notify 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-thumb { background: var(--system-dim); border-radius: 4px; }
