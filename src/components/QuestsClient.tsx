@@ -9,6 +9,7 @@ import {
   StatKey,
 } from "@/lib/rpg/engine";
 import { completeQuest } from "@/lib/rpg/award";
+import { generateSystemQuests } from "@/lib/rpg/questgen";
 import { SysWindow, RewardsModal, type RewardItem } from "@/components/SystemUI";
 
 export type Cadence = "daily" | "weekly" | "monthly" | "dungeon";
@@ -25,6 +26,8 @@ export interface QuestRow {
   status: QuestStatus;
   due_date: string | null;
   sort_order: number;
+  source: string;
+  system_date: string | null;
 }
 
 export interface QuestsInitial {
@@ -35,6 +38,8 @@ export interface QuestsInitial {
   stats: Record<StatKey, number>;
   earnedToday: number;
   quests: QuestRow[];
+  today: string;
+  systemIssuedToday: boolean;
 }
 
 const TABS: { cadence: Cadence; label: string; icon: string; blurb: string }[] = [
@@ -74,12 +79,55 @@ export default function QuestsClient({ initial }: { initial: QuestsInitial }) {
   const [rewards, setRewards] = useState<{ title: string; items: RewardItem[]; big: boolean } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
+  const prog = useMemo(() => progression(totalExp), [totalExp]);
+
+  const [systemIssued, setSystemIssued] = useState(initial.systemIssuedToday);
+  const [arrival, setArrival] = useState(false); // System quest arrival modal open
+  const [issuing, setIssuing] = useState(false);
+
+  // Preview the set the System WOULD issue today (deterministic — same as accept).
+  const systemPreview = useMemo(
+    () =>
+      generateSystemQuests({
+        userId: initial.userId,
+        date: initial.today,
+        level: prog.level,
+        stats,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [initial.userId, initial.today, prog.level]
+  );
+
+  async function acceptSystemQuests() {
+    if (issuing) return;
+    setIssuing(true);
+    const rows = systemPreview.map((q, i) => ({
+      user_id: initial.userId,
+      title: q.title,
+      notes: q.protocol,
+      category: q.category,
+      difficulty: q.difficulty,
+      cadence: "daily" as const,
+      source: "system",
+      system_date: initial.today,
+      sort_order: quests.length + i,
+    }));
+    const { data } = await supabase
+      .from("quests")
+      .insert(rows)
+      .select("id,title,notes,category,cadence,difficulty,status,due_date,sort_order,source,system_date");
+    if (data) setQuests((qs) => [...qs, ...(data as QuestRow[])]);
+    setSystemIssued(true);
+    setArrival(false);
+    setIssuing(false);
+    setTab("daily");
+  }
+
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState<DraftFields>(emptyDraft());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<DraftFields>(emptyDraft());
 
-  const prog = useMemo(() => progression(totalExp), [totalExp]);
   const visible = quests.filter((q) => q.cadence === tab);
   const activeTab = TABS.find((t) => t.cadence === tab)!;
 
@@ -191,6 +239,15 @@ export default function QuestsClient({ initial }: { initial: QuestsInitial }) {
         <RewardsModal title={rewards.title} items={rewards.items} big={rewards.big} onClose={() => setRewards(null)} />
       )}
 
+      {arrival && (
+        <SystemArrivalModal
+          quests={systemPreview}
+          busy={issuing}
+          onAccept={acceptSystemQuests}
+          onClose={() => setArrival(false)}
+        />
+      )}
+
       <header className="mb-5 text-center sys-in">
         <p className="text-[10px] tracking-[0.5em] text-system/55">⟢ THE SYSTEM ⟣</p>
         <h1 className="glow mt-1 text-2xl font-black tracking-wide text-system">QUEST BOARD</h1>
@@ -198,6 +255,20 @@ export default function QuestsClient({ initial }: { initial: QuestsInitial }) {
           LEVEL {prog.level} · EXP TODAY {earnedToday} · DUNGEONS {dungeonsCleared}
         </p>
       </header>
+
+      {!systemIssued && (
+        <button
+          onClick={() => setArrival(true)}
+          className="notify-in mb-4 flex w-full items-center justify-between border px-4 py-3 text-left"
+          style={{ borderColor: "var(--gold)", background: "rgba(255,214,107,.08)", boxShadow: "0 0 18px rgba(255,214,107,.25)" }}
+        >
+          <div>
+            <p className="glow-gold text-sm font-black tracking-widest text-gold">⚠ DAILY QUEST HAS ARRIVED</p>
+            <p className="mt-0.5 text-[10px] tracking-wider text-gold/70">The System has prepared today&apos;s training. Tap to view.</p>
+          </div>
+          <span className="shrink-0 border border-gold/60 px-2 py-1 text-[10px] font-bold tracking-widest text-gold">VIEW ▸</span>
+        </button>
+      )}
 
       {/* Cadence tabs */}
       <div className="mb-4 grid grid-cols-4 gap-1.5">
@@ -306,6 +377,11 @@ function QuestItem({
         </button>
         <div className="min-w-0 flex-1">
           <p className={`truncate text-sm ${done ? "line-through" : ""} ${failed ? "text-danger/80" : "text-foreground"}`}>
+            {q.source === "system" && (
+              <span className="mr-1.5 align-middle text-[8px] font-bold tracking-widest text-gold" style={{ textShadow: "0 0 6px rgba(255,214,107,.6)" }}>
+                ⟢SYSTEM
+              </span>
+            )}
             {q.title}
           </p>
           {(q.notes || q.due_date) && (
@@ -371,5 +447,57 @@ function QuestForm({
         <button type="button" onClick={onCancel} className="border border-system/20 px-3 py-1.5 text-xs text-system/60">CANCEL</button>
       </div>
     </form>
+  );
+}
+
+// The System's quest-arrival window (ref image 1 — angular NOTIFICATION modal).
+// Lists today's issued Daily Quests with Accept / Decline.
+function SystemArrivalModal({
+  quests, busy, onAccept, onClose,
+}: {
+  quests: { key: string; title: string; category: string; difficulty: Difficulty; protocol: string }[];
+  busy: boolean;
+  onAccept: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="notify-in sys-window sys-nodes glow-gold w-[min(94vw,420px)]" onClick={(e) => e.stopPropagation()}>
+        <div className="sys-header" style={{ color: "var(--gold)" }}>[ NOTIFICATION ]</div>
+        <div className="p-5">
+          <p className="text-center text-sm font-bold tracking-wide text-gold">
+            A Daily Quest has arrived.
+          </p>
+          <p className="mt-1 text-center text-[11px] leading-relaxed text-system/55">
+            &ldquo;Prepare to become strong, Hunter. The System has set today&apos;s training.&rdquo;
+          </p>
+          <ul className="mt-4 space-y-2">
+            {quests.map((q) => (
+              <li key={q.key} className="border border-gold/25 bg-gold/5 px-3 py-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-foreground">{q.title}</span>
+                  <span className="shrink-0 px-1.5 py-0.5 text-[9px] font-bold tracking-wider" style={{ color: DIFF_COLOR[q.difficulty], border: `1px solid ${DIFF_COLOR[q.difficulty]}55` }}>
+                    {CATEGORY_STAT[q.category] ?? "VIT"}·{q.difficulty.toUpperCase()}
+                  </span>
+                </div>
+                <p className="mt-0.5 text-[10px] text-system/45">▸ {q.protocol}</p>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-center text-[10px] text-danger/70">⚠ Failure to comply enacts the Penalty Zone at midnight.</p>
+          <div className="mt-4 flex gap-2">
+            <button
+              onClick={onAccept}
+              disabled={busy}
+              className="flex-1 border py-2 text-xs font-bold tracking-[0.3em] transition hover:bg-gold/10 disabled:opacity-50"
+              style={{ borderColor: "var(--gold)", color: "var(--gold)", boxShadow: "0 0 14px rgba(255,214,107,.3)" }}
+            >
+              {busy ? "ACCEPTING…" : "ACCEPT"}
+            </button>
+            <button onClick={onClose} disabled={busy} className="border border-system/20 px-4 py-2 text-xs tracking-widest text-system/55">LATER</button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
