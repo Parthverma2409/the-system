@@ -11,7 +11,7 @@ export default async function QuestsPage() {
   if (!user) redirect("/login");
 
   const today = new Date().toISOString().slice(0, 10);
-  const [{ data: profile }, { data: statRows }, { data: streak }, { data: quests }, { data: todayLogs }] =
+  const [{ data: profile }, { data: statRows }, { data: streak }, { data: quests }, { data: todayLogs }, { data: shadows }] =
     await Promise.all([
       supabase.from("profiles").select("total_exp,dungeons_cleared").eq("id", user.id).single(),
       supabase.from("stats").select("stat_key,value").eq("user_id", user.id),
@@ -22,6 +22,7 @@ export default async function QuestsPage() {
         .eq("user_id", user.id)
         .order("sort_order"),
       supabase.from("quest_logs").select("exp_awarded").eq("user_id", user.id).eq("date", today).eq("status", "done"),
+      supabase.from("shadows").select("id,name,type,power").eq("user_id", user.id).order("arisen_at", { ascending: false }),
     ]);
 
   const stats = Object.fromEntries(STAT_KEYS.map((k) => [k, 0])) as Record<StatKey, number>;
@@ -41,6 +42,7 @@ export default async function QuestsPage() {
     quests: allQuests,
     today,
     systemIssuedToday,
+    shadows: (shadows ?? []) as QuestsInitial["shadows"],
   };
 
   return <QuestsClient initial={initial} />;

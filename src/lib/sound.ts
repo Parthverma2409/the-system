@@ -83,6 +83,16 @@ export function playRankUp() {
   });
 }
 
+// ARISE — a dark, rising summon for raising a shadow soldier.
+export function playArise() {
+  play((c) => {
+    tone(c, 98, 0, 0.9, "sawtooth", 0.1); // low drone
+    tone(c, 146.83, 0.08, 0.7, "sawtooth", 0.09);
+    tone(c, 293.66, 0.18, 0.5, "triangle", 0.1);
+    tone(c, 440, 0.32, 0.4, "triangle", 0.1);
+  });
+}
+
 // Light haptic where supported (mobile).
 export function vibrate(pattern: number | number[]) {
   if (typeof navigator !== "undefined" && "vibrate" in navigator) {

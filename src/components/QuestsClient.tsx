@@ -12,7 +12,8 @@ import { completeQuest } from "@/lib/rpg/award";
 import { generateSystemQuests } from "@/lib/rpg/questgen";
 import { SysWindow, RewardsModal, type RewardItem } from "@/components/SystemUI";
 import Cinematic, { type CinematicData } from "@/components/Cinematic";
-import { playClear, playLevelUp, playPing, vibrate } from "@/lib/sound";
+import { playClear, playLevelUp, playPing, playArise, vibrate } from "@/lib/sound";
+import { ariseShadow, tierIcon } from "@/lib/rpg/shadows";
 import MuteToggle from "@/components/MuteToggle";
 
 export type Cadence = "daily" | "weekly" | "monthly" | "dungeon";
@@ -43,6 +44,14 @@ export interface QuestsInitial {
   quests: QuestRow[];
   today: string;
   systemIssuedToday: boolean;
+  shadows: ShadowRow[];
+}
+
+export interface ShadowRow {
+  id: string;
+  name: string;
+  type: string;
+  power: number;
 }
 
 const TABS: { cadence: Cadence; label: string; icon: string; blurb: string }[] = [
@@ -77,6 +86,7 @@ export default function QuestsClient({ initial }: { initial: QuestsInitial }) {
   const [stats, setStats] = useState(initial.stats);
   const [earnedToday, setEarnedToday] = useState(initial.earnedToday);
   const [dungeonsCleared, setDungeonsCleared] = useState(initial.dungeonsCleared);
+  const [shadows, setShadows] = useState<ShadowRow[]>(initial.shadows);
 
   const [tab, setTab] = useState<Cadence>("daily");
   const [rewards, setRewards] = useState<{ title: string; items: RewardItem[]; big: boolean } | null>(null);
@@ -154,7 +164,20 @@ export default function QuestsClient({ initial }: { initial: QuestsInitial }) {
       setStats((s) => ({ ...s, [res.stat]: res.newStatVal }));
       setDungeonsCleared(res.newDungeons);
 
-      const payload = { title: res.title, items: res.items, big: res.leveled || q.cadence === "dungeon" };
+      // Dungeon cleared → Arise a shadow soldier into the army.
+      let items = res.items;
+      if (q.cadence === "dungeon") {
+        const s = ariseShadow(res.after, q.difficulty);
+        const { data: srow } = await supabase
+          .from("shadows")
+          .insert({ user_id: initial.userId, name: s.name, type: s.type, power: s.power })
+          .select("id,name,type,power")
+          .single();
+        if (srow) setShadows((sh) => [srow as ShadowRow, ...sh]);
+        items = [...res.items, { label: `${tierIcon(s.type)} ARISE`, value: `${s.name} · ${s.type}`, color: "var(--monarch)" }];
+      }
+
+      const payload = { title: res.title, items, big: res.leveled || q.cadence === "dungeon" };
       if (res.leveled) {
         // Level-up: cinematic flash first, then the rewards modal.
         playLevelUp();
@@ -162,8 +185,13 @@ export default function QuestsClient({ initial }: { initial: QuestsInitial }) {
         setPendingRewards(payload);
         setCinematic({ type: "level", title: "LEVEL UP", sub: `${res.before} → ${res.after}` });
       } else {
-        playClear();
-        vibrate(20);
+        if (q.cadence === "dungeon") {
+          playArise();
+          vibrate([0, 80, 40, 120]);
+        } else {
+          playClear();
+          vibrate(20);
+        }
         setRewards(payload);
       }
     } catch {
@@ -368,8 +396,42 @@ export default function QuestsClient({ initial }: { initial: QuestsInitial }) {
         {tab === "daily" && (
           <p className="mt-3 text-center text-[10px] text-danger/70">⚠ Incomplete daily quests trigger a penalty at midnight.</p>
         )}
+        {tab === "dungeon" && (
+          <p className="mt-3 text-center text-[10px]" style={{ color: "var(--monarch)" }}>⚫ Clear a Dungeon to ARISE a shadow soldier.</p>
+        )}
       </SysWindow>
+
+      {tab === "dungeon" && <ShadowArmy shadows={shadows} />}
     </main>
+  );
+}
+
+function ShadowArmy({ shadows }: { shadows: ShadowRow[] }) {
+  const totalPower = shadows.reduce((s, x) => s + x.power, 0);
+  return (
+    <div className="mt-5">
+      <SysWindow title="SHADOW ARMY">
+        <div className="mb-3 flex items-center justify-between border px-3 py-1.5 text-[10px] tracking-widest" style={{ borderColor: "rgba(176,123,255,.3)", background: "rgba(176,123,255,.06)" }}>
+          <span className="text-system/60">SOLDIERS · {shadows.length}</span>
+          <span className="font-bold" style={{ color: "var(--monarch)", textShadow: "0 0 8px rgba(176,123,255,.5)" }}>ARMY POWER {totalPower.toLocaleString()}</span>
+        </div>
+        {shadows.length === 0 ? (
+          <p className="py-5 text-center text-xs text-system/50">No shadows yet. Clear a Dungeon and the System will let you ARISE one.</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {shadows.map((s) => (
+              <div key={s.id} className="flex items-center gap-2 border px-2.5 py-2" style={{ borderColor: "rgba(176,123,255,.25)", background: "rgba(176,123,255,.05)" }}>
+                <span className="text-xl">{tierIcon(s.type)}</span>
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-bold text-foreground">{s.name}</p>
+                  <p className="text-[9px] tracking-wider" style={{ color: "var(--monarch)" }}>{s.type} · PWR {s.power}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </SysWindow>
+    </div>
   );
 }
 
