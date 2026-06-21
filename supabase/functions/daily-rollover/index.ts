@@ -34,22 +34,32 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
-async function pushPenalty(userId: string, missed: number, lost: number) {
+async function sendPush(userId: string, title: string, body: string, tag: string) {
   try {
     await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
-      body: JSON.stringify({
-        user_id: userId,
-        title: "⚠ PENALTY ZONE",
-        body: `${missed} Daily Quest${missed === 1 ? "" : "s"} failed. −${lost} EXP · streak reset.`,
-        url: "/",
-        tag: "penalty",
-      }),
+      body: JSON.stringify({ user_id: userId, title, body, url: "/", tag }),
     });
   } catch {
-    // push is best-effort; the penalty itself has already been applied
+    // push is best-effort; the DB change has already been applied
   }
+}
+function pushPenalty(userId: string, missed: number, lost: number) {
+  return sendPush(
+    userId,
+    "⚠ PENALTY ZONE",
+    `${missed} Daily Quest${missed === 1 ? "" : "s"} failed. −${lost} EXP · streak reset.`,
+    "penalty"
+  );
+}
+function pushShield(userId: string, missed: number) {
+  return sendPush(
+    userId,
+    "🛡 IRON WILL",
+    `${missed} Daily Quest${missed === 1 ? "" : "s"} missed — but Iron Will absorbed the penalty. Streak preserved.`,
+    "shield"
+  );
 }
 
 Deno.serve(async () => {
@@ -62,6 +72,7 @@ Deno.serve(async () => {
 
   let usersPenalized = 0;
   let questsFailed = 0;
+  let shieldsUsed = 0;
 
   for (const p of profiles ?? []) {
     const { data: todo } = await supabase
@@ -77,15 +88,31 @@ Deno.serve(async () => {
     const ids = todo!.map((q) => q.id);
     await supabase.from("quests").update({ status: "failed" }).in("id", ids);
 
+    // Iron Will: an armed penalty_shield forgives this miss entirely — the day
+    // is recorded as failed, but no EXP is lost and the streak is preserved.
+    const { data: shield } = await supabase
+      .from("active_effects")
+      .select("effect_key")
+      .eq("user_id", p.id)
+      .eq("effect_key", "penalty_shield")
+      .maybeSingle();
+
     await supabase.from("quest_logs").insert(
       ids.map((quest_id) => ({
         user_id: p.id,
         quest_id,
         date: today,
         status: "failed",
-        exp_awarded: -DAILY_PENALTY,
+        exp_awarded: shield ? 0 : -DAILY_PENALTY,
       }))
     );
+
+    if (shield) {
+      await supabase.from("active_effects").delete().eq("user_id", p.id).eq("effect_key", "penalty_shield");
+      await pushShield(p.id, missed);
+      shieldsUsed++;
+      continue;
+    }
 
     const newExp = applyPenalty(p.total_exp, missed);
     const lost = p.total_exp - newExp;
@@ -98,7 +125,7 @@ Deno.serve(async () => {
   }
 
   return new Response(
-    JSON.stringify({ ran_for: today, usersPenalized, questsFailed }),
+    JSON.stringify({ ran_for: today, usersPenalized, questsFailed, shieldsUsed }),
     { headers: { "Content-Type": "application/json" } }
   );
 });

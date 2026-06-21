@@ -23,7 +23,8 @@ import {
 import { ExpBar, RankBadge, StatRadar, SysWindow, VitalBars, RewardsModal, type RewardItem } from "@/components/SystemUI";
 import Cinematic, { type CinematicData } from "@/components/Cinematic";
 import MuteToggle from "@/components/MuteToggle";
-import { playClear, playLevelUp, playRankUp, vibrate } from "@/lib/sound";
+import { playClear, playLevelUp, playRankUp, playPing, vibrate } from "@/lib/sound";
+import { ABILITIES, type Ability } from "@/lib/rpg/abilities";
 
 type Category = keyof typeof CATEGORY_STAT;
 
@@ -44,6 +45,8 @@ export interface InitialData {
   stats: Record<StatKey, number>;
   streak: number;
   apSpent: number;
+  abilities: Record<string, number>; // ability_key → owned charges
+  doubleNext: boolean; // a Focus Surge is armed
   quests: QuestRow[];
 }
 
@@ -75,6 +78,10 @@ export default function DashboardClient({ initial }: { initial: InitialData }) {
   const [stats, setStats] = useState(initial.stats);
   const [rank, setRank] = useState<Rank>(initial.rank);
   const [promoting, setPromoting] = useState(false);
+  const [apSpent, setApSpent] = useState(initial.apSpent);
+  const [owned, setOwned] = useState<Record<string, number>>(initial.abilities);
+  const [doubleNext, setDoubleNext] = useState(initial.doubleNext);
+  const [skillBusy, setSkillBusy] = useState(false);
   const [earnedToday, setEarnedToday] = useState(0);
   const [rewards, setRewards] = useState<{ title: string; items: RewardItem[]; big: boolean } | null>(null);
   const [pendingRewards, setPendingRewards] = useState<{ title: string; items: RewardItem[]; big: boolean } | null>(null);
@@ -102,7 +109,38 @@ export default function DashboardClient({ initial }: { initial: InitialData }) {
     });
   }, [quests, stats, prog.level, streak]);
 
-  const apAvailable = Math.max(0, abilityPointsEarned(prog.level) - initial.apSpent);
+  const apAvailable = Math.max(0, abilityPointsEarned(prog.level) - apSpent);
+
+  async function buyAbility(a: Ability) {
+    if (skillBusy || apAvailable < a.cost) return;
+    setSkillBusy(true);
+    const newSpent = apSpent + a.cost;
+    const newCharges = (owned[a.key] ?? 0) + 1;
+    setApSpent(newSpent);
+    setOwned((o) => ({ ...o, [a.key]: newCharges }));
+    playPing();
+    await Promise.all([
+      supabase.from("ability_points").upsert({ user_id: initial.userId, spent: newSpent }, { onConflict: "user_id" }),
+      supabase.from("user_abilities").upsert({ user_id: initial.userId, ability_key: a.key, charges: newCharges }, { onConflict: "user_id,ability_key" }),
+    ]);
+    setSkillBusy(false);
+  }
+
+  async function activateAbility(a: Ability) {
+    if (skillBusy || (owned[a.key] ?? 0) < 1) return;
+    if (a.effect === "double_next" && doubleNext) return; // already armed
+    setSkillBusy(true);
+    const newCharges = (owned[a.key] ?? 0) - 1;
+    setOwned((o) => ({ ...o, [a.key]: newCharges }));
+    if (a.effect === "double_next") setDoubleNext(true);
+    playPing();
+    vibrate(30);
+    await Promise.all([
+      supabase.from("user_abilities").update({ charges: newCharges }).eq("user_id", initial.userId).eq("ability_key", a.key),
+      supabase.from("active_effects").upsert({ user_id: initial.userId, effect_key: a.effect, value: 1 }, { onConflict: "user_id,effect_key" }),
+    ]);
+    setSkillBusy(false);
+  }
 
   const hunter: HunterState = {
     rank,
@@ -148,7 +186,14 @@ export default function DashboardClient({ initial }: { initial: InitialData }) {
 
   async function clearQuest(q: QuestRow) {
     if (q.status === "done") return;
-    const gained = awardExp({ difficulty: q.difficulty, streak, earnedToday, level: prog.level });
+    const base = awardExp({ difficulty: q.difficulty, streak, earnedToday, level: prog.level });
+    // Focus Surge: an armed double_next doubles this one clear, then is consumed.
+    const surged = doubleNext;
+    const gained = surged ? base * 2 : base;
+    if (surged) {
+      setDoubleNext(false);
+      void supabase.from("active_effects").delete().eq("user_id", initial.userId).eq("effect_key", "double_next");
+    }
     const stat = CATEGORY_STAT[q.category] ?? "VIT";
     const before = prog.level;
     const newTotal = totalExp + gained;
@@ -166,6 +211,7 @@ export default function DashboardClient({ initial }: { initial: InitialData }) {
       { label: "EXP GAINED", value: `+${gained}` },
       { label: STAT_LABELS[stat], value: `+1 ${stat}`, color: "var(--system-bright)" },
     ];
+    if (surged) items.unshift({ label: "⚡ FOCUS SURGE", value: "2× EXP", color: "var(--gold)" });
     if (leveled) {
       items.push({ label: "LEVEL", value: `${before} → ${after}`, color: "var(--gold)" });
       items.push({ label: "ABILITY POINTS", value: `+${AP_PER_LEVEL * (after - before)}`, color: "var(--gold)" });
@@ -317,6 +363,48 @@ export default function DashboardClient({ initial }: { initial: InitialData }) {
           </div>
         </div>
       )}
+
+      <SysWindow title="SKILLS · SPEND ABILITY POINTS" className="mb-5" delay={100}>
+        <div className="mb-3 flex items-center justify-between border border-gold/25 bg-gold/5 px-3 py-1.5 text-[10px] tracking-widest">
+          <span className="text-system/60">AVAILABLE AP</span>
+          <span className="font-bold text-gold" style={{ textShadow: "0 0 8px rgba(255,214,107,.5)" }}>{apAvailable}</span>
+        </div>
+        {doubleNext && (
+          <p className="mb-2 text-center text-[10px] font-bold tracking-widest text-gold">⚡ FOCUS SURGE ARMED — next clear is 2× EXP</p>
+        )}
+        <div className="grid gap-2 sm:grid-cols-2">
+          {ABILITIES.map((a) => {
+            const charges = owned[a.key] ?? 0;
+            return (
+              <div key={a.key} className="flex flex-col border border-system/20 bg-system/5 p-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">{a.icon}</span>
+                  <span className="text-sm font-bold text-foreground">{a.name}</span>
+                  <span className="ml-auto text-[10px] tracking-widest text-system/45">×{charges}</span>
+                </div>
+                <p className="mt-1 text-[11px] leading-snug text-system/60">{a.blurb}</p>
+                <p className="mt-1 text-[10px] italic leading-snug text-system/35">{a.flavor}</p>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    onClick={() => buyAbility(a)}
+                    disabled={skillBusy || apAvailable < a.cost}
+                    className="flex-1 border border-gold/50 py-1.5 text-[10px] font-bold tracking-widest text-gold transition hover:bg-gold/10 disabled:opacity-35"
+                  >
+                    BUY · {a.cost} AP
+                  </button>
+                  <button
+                    onClick={() => activateAbility(a)}
+                    disabled={skillBusy || charges < 1 || (a.effect === "double_next" && doubleNext)}
+                    className="flex-1 border border-system/50 py-1.5 text-[10px] font-bold tracking-widest text-system transition hover:bg-system/10 disabled:opacity-35"
+                  >
+                    USE
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </SysWindow>
 
       <div className="grid gap-5 md:grid-cols-2">
         <SysWindow title="STATS" delay={120}>

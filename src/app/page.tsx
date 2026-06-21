@@ -12,7 +12,7 @@ export default async function Page() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: profile }, { data: statsRows }, { data: quests }, { data: streak }, { data: apRow }] =
+  const [{ data: profile }, { data: statsRows }, { data: quests }, { data: streak }, { data: apRow }, { data: abilityRows }, { data: effectRows }] =
     await Promise.all([
       supabase.from("profiles").select("*").eq("id", user.id).single(),
       supabase.from("stats").select("stat_key,value").eq("user_id", user.id),
@@ -24,6 +24,8 @@ export default async function Page() {
         .order("sort_order"),
       supabase.from("streaks").select("*").eq("user_id", user.id).single(),
       supabase.from("ability_points").select("spent").eq("user_id", user.id).maybeSingle(),
+      supabase.from("user_abilities").select("ability_key,charges").eq("user_id", user.id),
+      supabase.from("active_effects").select("effect_key").eq("user_id", user.id),
     ]);
 
   const stats = Object.fromEntries(STAT_KEYS.map((k) => [k, 0])) as Record<StatKey, number>;
@@ -40,6 +42,8 @@ export default async function Page() {
     stats,
     streak: streak?.current ?? 0,
     apSpent: apRow?.spent ?? 0,
+    abilities: Object.fromEntries((abilityRows ?? []).map((a) => [a.ability_key, a.charges])),
+    doubleNext: (effectRows ?? []).some((e) => e.effect_key === "double_next"),
     quests: (quests ?? []).map((q) => ({
       id: q.id,
       title: q.title,
