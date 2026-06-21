@@ -27,6 +27,7 @@ import { playClear, playLevelUp, playRankUp, playPing, vibrate } from "@/lib/sou
 import { ABILITIES, type Ability } from "@/lib/rpg/abilities";
 import ShareCard from "@/components/ShareCard";
 import PublicProfileControl from "@/components/PublicProfileControl";
+import Awakening from "@/components/Awakening";
 
 type Category = keyof typeof CATEGORY_STAT;
 
@@ -49,6 +50,7 @@ export interface InitialData {
   apSpent: number;
   handle: string | null;
   publicProfile: boolean;
+  onboarded: boolean;
   abilities: Record<string, number>; // ability_key → owned charges
   doubleNext: boolean; // a Focus Surge is armed
   quests: QuestRow[];
@@ -82,6 +84,7 @@ export default function DashboardClient({ initial }: { initial: InitialData }) {
   const [stats, setStats] = useState(initial.stats);
   const [rank, setRank] = useState<Rank>(initial.rank);
   const [promoting, setPromoting] = useState(false);
+  const [showAwakening, setShowAwakening] = useState(!initial.onboarded);
   const [apSpent, setApSpent] = useState(initial.apSpent);
   const [owned, setOwned] = useState<Record<string, number>>(initial.abilities);
   const [doubleNext, setDoubleNext] = useState(initial.doubleNext);
@@ -279,6 +282,16 @@ export default function DashboardClient({ initial }: { initial: InitialData }) {
 
   return (
     <main className={`mx-auto w-full max-w-3xl px-4 py-8 ${hunter.rank === "S" ? "monarch" : ""}`}>
+      {showAwakening && (
+        <Awakening
+          userId={initial.userId}
+          onDone={() => {
+            setShowAwakening(false);
+            router.refresh();
+          }}
+        />
+      )}
+
       {cinematic && (
         <Cinematic
           data={cinematic}

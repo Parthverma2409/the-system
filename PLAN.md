@@ -284,7 +284,12 @@ outfits        (id, user_id, date, item_ids uuid[], note)     -- today's attire 
   - **Rank-Up Trial flow** — Attempt-Trial → gold RANK UP cinematic → promote rank + unlock title (S = Shadow Monarch).
   - **Skills** — `user_abilities`/`active_effects`; spend AP on Focus Surge (2× next EXP) and Iron Will (negates next penalty, honoured by daily-rollover v2).
   - **Shadow Army** — `shadows` table; Dungeon clears ARISE tiered shadow soldiers with Army Power; roster on the Dungeons tab.
-- **P10 — Deploy to Vercel** → install on phone + laptop.
+- ✅ **P10 — Deployed to Vercel** (live PWA, installed on phone). Notifications verified end-to-end (cron + push). App icons generated.
+- ✅ **Growth pack** (acquisition / virality):
+  - **Shareable Status card** — canvas-rendered, screenshot-ready Hunter card via Web Share API; carries the app URL.
+  - **Public Hunter profile** — `/h/[handle]` read-only card (SECURITY DEFINER `public_hunter`, opt-in `public_profile`), OG link previews, conversion CTA; claim handle + copy link from the dashboard.
+  - **Guild leaderboard** — `follows` + `follow_by_handle`/`leaderboard` functions; add public hunters by handle, rank by weekly EXP / all-time level; new GUILD nav tab.
+  - **Awakening onboarding** — first-run cinematic (typed System prompt → name → choose focuses → ARISE) gated by `profiles.onboarded`; seeds starter System quests.
 
 ## V2.8 Privacy & safety note (because this now holds real documents)
 Records can include IDs, contracts, medical files. Therefore: **private buckets only**, strict **RLS by `auth.uid()`**, signed short-lived URLs for viewing, no public links, and a clear in-app note that files are stored in the user's own Supabase project. We will run the security advisor after every storage/RLS change (as we did for the schema).

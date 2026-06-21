@@ -44,6 +44,7 @@ export default async function Page() {
     apSpent: apRow?.spent ?? 0,
     handle: profile?.handle ?? null,
     publicProfile: profile?.public_profile ?? false,
+    onboarded: profile?.onboarded ?? true,
     abilities: Object.fromEntries((abilityRows ?? []).map((a) => [a.ability_key, a.charges])),
     doubleNext: (effectRows ?? []).some((e) => e.effect_key === "double_next"),
     quests: (quests ?? []).map((q) => ({
